@@ -1,0 +1,52 @@
+import { test, expect } from '@playwright/test';
+test('crear, editar seguimiento, filtrar, recargar y eliminar en navegador real', async ({ page }, testInfo) => {
+  const errores = [];
+  page.on('pageerror', error => errores.push(error.message));
+  await page.goto('/');
+  const formulario = page.getByRole('region', { name: 'Nuevo reclamo' });
+  await expect(formulario.getByRole('button', { name: 'Seguimiento' })).toBeDisabled();
+  await formulario.getByRole('button', { name: 'Agregar Reclamo' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Debes llenar todos los campos de la primera etapa.');
+  for (const [nombre, valor] of [['Vendedor', 'CENTRO'], ['Clasificación', 'GARANTÍA'], ['Tipo de Reclamo', 'Mueble'], ['Tipo de Problema', 'Tela']]) await formulario.getByLabel(nombre, { exact: false }).selectOption(valor);
+  for (const [nombre, valor] of [['Fecha de Reclamo', '2026-10-19'], ['Cliente', 'Ana Pérez'], ['Sucursal/Ubicación', 'San Salvador'], ['Producto', 'Sofá'], ['Descripción', 'Tela dañada']]) await formulario.getByLabel(nombre, { exact: false }).fill(valor);
+  await formulario.getByRole('button', { name: 'Agregar Reclamo' }).click();
+  await expect(page.getByRole('status')).toHaveText('Mostrando 1 de 1 reclamos');
+  if (testInfo.project.name === 'escritorio') {
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('article')).toBeHidden();
+  } else {
+    await expect(page.getByRole('table')).toBeHidden();
+    await expect(page.getByRole('article')).toBeVisible();
+  }
+  const lista = page.getByRole(testInfo.project.name === 'escritorio' ? 'table' : 'article');
+  const estatus = lista.getByText('PENDIENTE', { exact: true });
+  await expect(estatus).toHaveCSS('background-color', 'oklch(0.973 0.071 103.193)');
+  await page.getByRole('button', { name: 'Seguimiento RG-0001', exact: false }).click();
+  const edicion = page.getByRole('region', { name: 'Editar reclamo RG-0001' });
+  await expect(edicion.getByLabel('Despacho-Recepción')).toHaveValue('2026-10-19');
+  await edicion.getByLabel('Despacho Final-Estatus').selectOption('');
+  await edicion.getByRole('button', { name: 'Guardar Cambios' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Debes llenar todos los campos de seguimiento.');
+  await edicion.getByLabel('Despacho Final-Estatus').selectOption('DESPACHADO');
+  await edicion.getByLabel('Conformidad del Cliente-Estatus').selectOption('Aceptación de cliente');
+  await edicion.getByRole('button', { name: 'Guardar Cambios' }).click();
+  await page.reload();
+  await expect(page.getByRole('status')).toHaveText('Mostrando 1 de 1 reclamos');
+  const filtros = page.getByRole('region', { name: 'Filtros' });
+  await filtros.getByRole('searchbox').fill('ana');
+  for (const [nombre, valor] of [['Vendedor', 'CENTRO'], ['Clasificación', 'GARANTÍA'], ['Tipo de Reclamo', 'Mueble'], ['Estatus Final', 'DESPACHADO'], ['Conformidad del Cliente', 'Aceptación de cliente']]) await filtros.getByLabel(nombre, { exact: false }).selectOption(valor);
+  await expect(page.getByRole('status')).toHaveText('Mostrando 1 de 1 reclamos');
+  await filtros.getByRole('searchbox').fill('sin resultados');
+  await expect(page.getByText('No se encontraron reclamos con los filtros aplicados')).toBeVisible();
+  await filtros.getByRole('button', { name: 'Limpiar Filtros' }).click();
+  await page.getByRole('button', { name: 'Editar RG-0001', exact: false }).click();
+  await edicion.getByLabel('Cliente', { exact: false }).fill('Ana editada');
+  await edicion.getByRole('button', { name: 'Guardar Cambios' }).click();
+  await expect(page.getByText('Ana editada', { exact: false }).filter({ visible: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('reclamos.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Eliminar RG-0001', exact: false }).click();
+  await page.reload();
+  await expect(page.getByRole('status')).toHaveText('Mostrando 0 de 0 reclamos');
+  expect(errores).toEqual([]);
+});
